@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/success", "destination": "/public/success.html" },
+    { "source": "/cancel",  "destination": "/public/cancel.html"  }
+  ]
+}

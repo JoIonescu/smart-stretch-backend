@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Desk Wellness Pack - Smart Stretch</title>
+  <style>
+    :root {
+      --bg-1: #1b1f2a;
+      --bg-2: #23293a;
+      --panel: rgba(255, 255, 255, 0.08);
+      --panel-border: rgba(255, 255, 255, 0.12);
+      --text: #ffffff;
+      --muted: #c7cedd;
+      --yellow: #ffd400;
+      --orange: #ff7a00;
+      --green: #34c759;
+      --red: #ff8a80;
+      --blue: #5aa9ff;
+      --shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 420px;
+      min-width: 420px;
+      max-width: 420px;
+      min-height: 740px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(180deg, var(--bg-1), var(--bg-2));
+      color: var(--text);
+    }
+
+    body { padding: 18px; }
+
+    .wrap { display: flex; flex-direction: column; gap: 14px; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    /* ---- Header ---- */
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .title { font-size: 22px; font-weight: 800; line-height: 1.2; letter-spacing: 0.2px; }
+
+    .pro-badge {
+      display: none;
+      background: var(--yellow);
+      color: #1b1f2a;
+      font-size: 11px;
+      font-weight: 800;
+      border-radius: 20px;
+      padding: 4px 12px;
+      letter-spacing: 0.4px;
+    }
+
+    .subtitle { font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+    /* ---- Timer ---- */
+    .label { font-size: 14px; font-weight: 600; }
+    .sub-label { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+    .timer-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 92px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      text-align: center;
+      padding: 14px;
+    }
+
+    .timer-label { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .timer-value { font-size: 28px; font-weight: 800; line-height: 1; color: var(--yellow); min-height: 30px; }
+
+    .controls { display: flex; gap: 10px; }
+
+    /* ---- Buttons ---- */
+    .btn {
+      flex: 1;
+      border: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-start { background: var(--green); color: #0f1b12; }
+    .btn-stop  { background: var(--red);   color: #2b1010; }
+
+    .btn-upgrade {
+      background: linear-gradient(135deg, var(--yellow), var(--orange));
+      color: #1b1f2a;
+      flex: none;
+      width: 100%;
+      margin-top: 12px;
+      font-size: 15px;
+      padding: 14px;
+      border-radius: 14px;
+    }
+
+    .btn-verify {
+      background: var(--blue);
+      color: #0a1220;
+      flex: none;
+      width: 100%;
+      margin-top: 10px;
+      font-size: 13px;
+      padding: 11px;
+      border-radius: 12px;
+      display: none;
+    }
+
+    /* ---- Toggles ---- */
+    .setting {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+    }
+    .setting + .setting { border-top: 1px solid rgba(255, 255, 255, 0.08); }
+
+    .toggle {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      min-width: 22px;
+      min-height: 22px;
+      border-radius: 6px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      margin-top: 2px;
+      position: relative;
+    }
+    .toggle:checked { background: var(--yellow); border-color: var(--yellow); }
+    .toggle:checked::after {
+      content: "✓";
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+      font-weight: 900;
+      color: #1b1f2a;
+    }
+
+    /* ---- Status ---- */
+    .status-ok { font-size: 12px; color: var(--green); margin-top: 5px; display: none; }
+
+    /* ---- Select ---- */
+    .select {
+      width: 100%;
+      margin-top: 10px;
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      font-size: 14px;
+      outline: none;
+    }
+    .select option { color: #111; }
+
+    /* ---- Upgrade card ---- */
+    .upgrade-card {
+      background: linear-gradient(135deg, rgba(255, 212, 0, 0.10), rgba(255, 122, 0, 0.08));
+      border: 1px solid rgba(255, 212, 0, 0.28);
+    }
+
+    .upgrade-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .upgrade-title { font-size: 16px; font-weight: 800; }
+    .upgrade-sub { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* ---- Info button ---- */
+    .info-btn {
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      min-height: 28px;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease, color 0.15s ease;
+      flex-shrink: 0;
+      padding: 0;
+      line-height: 1;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .info-btn:hover { background: rgba(255,255,255,0.18); color: var(--text); }
+    .info-btn.active { background: var(--yellow); color: #1b1f2a; border-color: var(--yellow); }
+
+    /* ---- Info panel ---- */
+    .info-panel {
+      display: none;
+      margin-top: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 13px;
+      padding: 14px;
+    }
+    .info-panel.open { display: block; }
+
+    .info-heading {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .info-step {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 7px;
+      align-items: flex-start;
+    }
+
+    .info-step:last-child { margin-bottom: 0; }
+
+    .info-step-num {
+      background: rgba(255, 212, 0, 0.18);
+      color: var(--yellow);
+      font-size: 11px;
+      font-weight: 800;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .info-step-text {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .info-step-text strong { color: var(--text); font-weight: 700; }
+
+    .info-note {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* ---- Upgrade features ---- */
+    .upgrade-features { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+    .upgrade-feature { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; }
+    .upgrade-feature-icon { font-size: 18px; min-width: 24px; text-align: center; margin-top: 1px; }
+
+    .upgrade-price { margin-top: 8px; font-size: 12px; color: var(--muted); text-align: center; }
+
+    .pending-note {
+      display: none;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    /* ---- Pro integrations card ---- */
+    .pro-integrations { display: none; }
+
+    /* ---- Stats ---- */
+    .stats-carousel-wrap { margin-top: 10px; width: 100%; overflow: hidden; border-radius: 14px; }
+
+    .stats-carousel {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      scrollbar-width: none;
+      touch-action: pan-x;
+      cursor: grab;
+    }
+    .stats-carousel:active { cursor: grabbing; }
+    .stats-carousel::-webkit-scrollbar { display: none; }
+
+    .stats-track { display: flex; width: 200%; }
+
+    .stats-slide { flex: 0 0 50%; width: 50%; scroll-snap-align: start; padding: 0 2px; }
+
+    .stats-heading { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 8px; text-align: center; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+
+    .stat {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 12px 10px;
+      text-align: center;
+      min-width: 0;
+    }
+    .stat-value { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .stat-label { font-size: 12px; color: var(--muted); }
+
+    .carousel-dots { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
+
+    .carousel-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.22);
+      transition: transform 0.2s ease, background 0.2s ease;
+      cursor: pointer;
+    }
+    .carousel-dot.active { background: var(--yellow); transform: scale(1.1); }
+
+    .weekly-note { margin-top: 10px; font-size: 11px; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- HEADER -->
+    <div class="card">
+      <div class="header-row">
+        <div class="title">Smart Stretch</div>
+        <div class="pro-badge" id="proBadge">✨ Pro</div>
+      </div>
+      <div class="subtitle">
+        Adjusts the stretch experience based on skips, snoozes and completions
+      </div>
+    </div>
+
+    <!-- TIMER -->
+    <div class="card">
+      <div class="timer-box">
+        <div class="timer-label">Next stretch break</div>
+        <div class="timer-value" id="timerDisplay">Timer Inactive</div>
+      </div>
+
+      <select id="intervalSelect" class="select">
+        <option value="15">Every 15 minutes</option>
+        <option value="20">Every 20 minutes</option>
+        <option value="30">Every 30 minutes</option>
+        <option value="45">Every 45 minutes</option>
+        <option value="60">Every 60 minutes</option>
+      </select>
+
+      <div class="controls" style="margin-top: 12px;">
+        <button id="startBtn" class="btn btn-start">Start</button>
+        <button id="stopBtn" class="btn btn-stop">Stop</button>
+      </div>
+    </div>
+
+    <!-- BASE SETTINGS -->
+    <div class="card">
+      <div class="setting">
+        <div>
+          <div class="label">Smart Stretch</div>
+          <div class="sub-label">Adapts stretch type based on your recent behavior</div>
+        </div>
+        <input type="checkbox" id="smartModeToggle" class="toggle" />
+      </div>
+      <div class="setting">
+        <div>
+          <div class="label">Play sound during stretch break</div>
+          <div class="sub-label">Gentle sound when the stretch screen opens</div>
+        </div>
+        <input type="checkbox" id="soundToggle" class="toggle" />
+      </div>
+    </div>
+
+    <!-- UPGRADE CARD — shown when not Pro -->
+    <div class="card upgrade-card" id="upgradeCard">
+
+      <div class="upgrade-title-row">
+        <div class="upgrade-title">✨ Upgrade to Pro</div>
+        <button type="button" class="info-btn" id="infoBtn" title="What do I need before buying?">i</button>
+      </div>
+      <div class="upgrade-sub">One-time purchase. Skip stretches during meetings automatically.</div>
+
+      <!-- Info panel -->
+      <div class="info-panel" id="infoPanel">
+        <div class="info-heading">📅 What you need for Google Calendar</div>
+
+        <div class="info-step">
+          <div class="info-step-num">1</div>
+          <div class="info-step-text">You need a <strong>Google account</strong> — the same one your calendar is on.</div>
+        </div>
+        <div class="info-step">
+          <div class="info-step-num">2</div>
+          <div class="info-step-text">After upgrading, turn on <strong>Skip during meetings</strong> in the Pro section below.</div>
+        </div>
+        <div class="info-step">
+          <div class="info-step-num">3</div>
+          <div class="info-step-text">Google will open a sign-in window and ask for permission to check your calendar. Click <strong>Allow</strong>.</div>
+        </div>
+        <div class="info-step">
+          <div class="info-step-num">4</div>
+          <div class="info-step-text">That's it. From now on, if you have a meeting when a stretch is due, the reminder will be skipped automatically and rescheduled for after the meeting.</div>
+        </div>
+
+        <div class="info-note">
+          🔒 The extension only checks whether you are busy at the moment a stretch fires. It does not read event titles, attendees, or any other calendar data.
+        </div>
+      </div>
+
+      <!-- Feature -->
+      <div class="upgrade-features">
+        <div class="upgrade-feature">
+          <div class="upgrade-feature-icon">📅</div>
+          <div>
+            <div class="label" style="font-size:13px;">Skip during meetings</div>
+            <div class="sub-label">Checks Google Calendar — pauses reminders automatically when you're busy</div>
+          </div>
+        </div>
+      </div>
+
+      <button id="upgradeBtn" class="btn btn-upgrade">Upgrade — €3.00</button>
+      <button id="verifyBtn" class="btn btn-verify">✓ I've paid — Verify Payment</button>
+      <div class="pending-note" id="pendingNote">
+        Complete your payment in the tab that just opened,<br>then click Verify Payment above.
+      </div>
+      <div class="upgrade-price">One-time · No subscription · Instant unlock</div>
+    </div>
+
+    <!-- PRO INTEGRATIONS CARD — shown when Pro -->
+    <div class="card pro-integrations" id="proIntegrationsCard">
+      <div class="setting">
+        <div>
+          <div class="label">📅 Skip during meetings</div>
+          <div class="sub-label">Checks Google Calendar — skips stretch if you're busy right now</div>
+        </div>
+        <input type="checkbox" id="calendarToggle" class="toggle" />
+      </div>
+      <div id="calendarStatus" class="status-ok">✅ Google Calendar connected</div>
+    </div>
+
+    <!-- STATS -->
+    <div class="card">
+      <div class="label">Your weekly stretch activity</div>
+      <div class="stats-carousel-wrap">
+        <div class="stats-carousel" id="statsCarousel">
+          <div class="stats-track">
+            <div class="stats-slide">
+              <div class="stats-heading">Last Week</div>
+              <div class="stats">
+                <div class="stat">
+                  <div class="stat-value" id="lastCompletedCount">0</div>
+                  <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value" id="lastSnoozedCount">0</div>
+                  <div class="stat-label">Snoozed</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value" id="lastSkippedCount">0</div>
+                  <div class="stat-label">Skipped</div>
+                </div>
+              </div>
+            </div>
+            <div class="stats-slide">
+              <div class="stats-heading">This Week</div>
+              <div class="stats">
+                <div class="stat">
+                  <div class="stat-value" id="completedCount">0</div>
+                  <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value" id="snoozedCount">0</div>
+                  <div class="stat-label">Snoozed</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value" id="skippedCount">0</div>
+                  <div class="stat-label">Skipped</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="carousel-dots">
+        <div class="carousel-dot" id="dot0"></div>
+        <div class="carousel-dot active" id="dot1"></div>
+      </div>
+      <div class="weekly-note">Resets every week (Sunday) · Tap dot to see last week</div>
+    </div>
+
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

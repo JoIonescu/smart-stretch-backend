@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Desk Wellness Pack - Smart Stretch",
+  "description": "Smart stretch reminders for healthier desk work habits.",
+  "version": "1.5",
+  "permissions": [
+    "alarms",
+    "storage",
+    "idle",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://YOUR_VERCEL_APP.vercel.app/*"
+  ],
+  "oauth2": {
+    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/calendar.readonly"]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/stretch-chime.mp3",
+        "assets/stretch-chime.wav",
+        "assets/notification.mp3",
+        "assets/notification.wav",
+        "chime.mp3",
+        "libs/dotlottie-wc.lottie",
+        "dotlottie-wc.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

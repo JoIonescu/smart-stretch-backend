@@ -315,8 +315,24 @@ async function init() {
 
   calendarToggle?.addEventListener("change", async () => {
     await sendMessage({ type: "setCalendarEnabled", enabled: calendarToggle.checked });
-    if (calendarStatus) {
-      calendarStatus.style.display = calendarToggle.checked ? "block" : "none";
+
+    if (calendarToggle.checked) {
+      // Must call getAuthToken from popup context — MV3 service workers
+      // cannot open interactive auth prompts
+      chrome.identity.getAuthToken({ interactive: true }, (token) => {
+        if (chrome.runtime.lastError || !token) {
+          console.warn("Google auth failed:", chrome.runtime.lastError?.message);
+          // Auth failed — uncheck the toggle and disable in storage
+          calendarToggle.checked = false;
+          sendMessage({ type: "setCalendarEnabled", enabled: false });
+          if (calendarStatus) calendarStatus.style.display = "none";
+          return;
+        }
+        // Auth succeeded — show connected status
+        if (calendarStatus) calendarStatus.style.display = "block";
+      });
+    } else {
+      if (calendarStatus) calendarStatus.style.display = "none";
     }
   });
 

@@ -1005,9 +1005,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       if (request.type === "setCalendarEnabled") {
         await setLocal({ calendarEnabled: !!request.enabled });
-        if (request.enabled) {
-          getGoogleToken(true).catch((e) => console.warn("Google auth:", e));
-        }
         sendResponse({ ok: true });
         return;
       }

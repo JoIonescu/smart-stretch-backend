@@ -16,6 +16,16 @@ function formatRemaining(ms) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatTime(timestamp) {
+  if (!timestamp) return "";
+  const d = new Date(timestamp);
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+}
+
 function setTimerInactive() {
   const el = document.getElementById("timerDisplay");
   if (el) el.textContent = "Timer Inactive";
@@ -95,17 +105,34 @@ async function loadStats() {
   if (lastSkipped)   lastSkipped.textContent   = lastWeekStats.skippedCount   ?? 0;
 }
 
-/* ---- Timer (original) ---- */
+/* ---- Timer ---- */
 
 async function startPopupTimerFromState(settings) {
   stopPopupTimer();
 
   const timerDisplay = document.getElementById("timerDisplay");
+  const timerLabel   = document.getElementById("timerLabel");
   if (!timerDisplay) return;
 
+  // Meeting in progress — show meeting state, no countdown
+  if (settings.stretchReminderState === "in_meeting") {
+    if (timerLabel) timerLabel.textContent = "Meeting in progress";
+    if (settings.meetingEndTime) {
+      timerDisplay.textContent = `Until ${formatTime(settings.meetingEndTime)}`;
+    } else {
+      timerDisplay.textContent = "Stretch paused";
+    }
+    // Apply blue colour to match badge
+    timerDisplay.style.color = "var(--blue)";
+    return;
+  }
+
+  // Reset label and colour for normal states
+  if (timerLabel) timerLabel.textContent = "Next stretch break";
+  timerDisplay.style.color = "var(--yellow)";
+
   if (
-    settings.stretchReminderState === "shown" ||
-    settings.stretchReminderState === "waiting_for_user_active"
+    settings.stretchReminderState === "shown"
   ) {
     setTimerInactive();
     return;
@@ -196,7 +223,6 @@ async function init() {
 
   const isPro = await loadLicenseStatus();
 
-  // Restore pending payment state if user started checkout but didn't verify yet
   if (!isPro) {
     const pending = await new Promise((resolve) => {
       chrome.storage.local.get(["pendingSessionId"], (d) => resolve(d.pendingSessionId || null));
@@ -208,7 +234,7 @@ async function init() {
     await loadIntegrationSettings();
   }
 
-  /* ---- Original handlers ---- */
+  /* ---- Original button handlers ---- */
 
   const startBtn        = document.getElementById("startBtn");
   const stopBtn         = document.getElementById("stopBtn");

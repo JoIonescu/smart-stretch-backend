@@ -1,13 +1,14 @@
 const ALARM_NAME = "stretchAlarm";
 const WEEKLY_RESET_ALARM = "weeklyStatsReset";
+const MEETING_CHECK_ALARM = "meetingCheckAlarm";
 
-// Replace with your deployed Vercel URL after deployment
+// Replace with your deployed Vercel URL
 const BACKEND_URL = "https://smart-stretch-backend.vercel.app";
 
 let countdownInterval = null;
 
 const DEFAULT_RUNTIME = {
-  stretchReminderState: "inactive", // inactive | scheduled | waiting_for_user_active | shown
+  stretchReminderState: "inactive", // inactive | scheduled | in_meeting | shown
   pendingDueWhileIdle: false,
   isPausedByIdle: false,
   pausedAt: null,
@@ -16,7 +17,7 @@ const DEFAULT_RUNTIME = {
 
 let runtimeState = { ...DEFAULT_RUNTIME };
 
-// In-memory license cache — avoids hitting backend on every alarm
+// In-memory license cache — resets when service worker sleeps
 let _licenseCache = null;
 let _licenseCacheAt = 0;
 
@@ -244,6 +245,11 @@ function clearBadge() {
   chrome.action.setBadgeText({ text: "" });
 }
 
+function setBadgeMeeting() {
+  chrome.action.setBadgeBackgroundColor({ color: "#5aa9ff" }); // blue
+  chrome.action.setBadgeText({ text: "MTG" });
+}
+
 function startBadgeCountdown() {
   if (countdownInterval) {
     clearInterval(countdownInterval);
@@ -254,9 +260,21 @@ function startBadgeCountdown() {
     const data = await getLocal(["interval", "startTime"]);
     const currentRuntime = await getRuntimeState();
 
-    if (currentRuntime.stretchReminderState === "shown") { clearBadge(); return; }
-    if (currentRuntime.stretchReminderState === "waiting_for_user_active") { clearBadge(); return; }
-    if (!data || !data.interval || !data.startTime) { clearBadge(); return; }
+    if (currentRuntime.stretchReminderState === "shown") {
+      clearBadge();
+      return;
+    }
+
+    // Show meeting badge — frozen, no countdown
+    if (currentRuntime.stretchReminderState === "in_meeting") {
+      setBadgeMeeting();
+      return;
+    }
+
+    if (!data || !data.interval || !data.startTime) {
+      clearBadge();
+      return;
+    }
 
     const elapsed = (Date.now() - data.startTime) / 1000;
     const total = Number(data.interval) * 60;
@@ -344,48 +362,66 @@ async function getInstallationId() {
   return id;
 }
 
+// Fetch with a hard timeout — prevents service worker stalling
+function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timeoutId));
+}
+
 async function getLicenseStatus() {
   // Return in-memory cache if fresh (1 hour)
   if (_licenseCache !== null && Date.now() - _licenseCacheAt < 60 * 60 * 1000) {
     return _licenseCache;
   }
 
-  const data = await getLocal(["licenseToken", "licenseVerifiedAt"]);
-
-  if (!data.licenseToken) {
-    _licenseCache = { isPro: false };
-    _licenseCacheAt = Date.now();
-    return _licenseCache;
-  }
-
-  // Trust storage cache if verified within last 24 hours
-  if (data.licenseVerifiedAt && Date.now() - data.licenseVerifiedAt < 24 * 60 * 60 * 1000) {
-    _licenseCache = { isPro: true };
-    _licenseCacheAt = Date.now();
-    return _licenseCache;
-  }
-
-  // Re-verify against backend
   try {
-    const installationId = await getInstallationId();
-    const res = await fetch(`${BACKEND_URL}/api/verify-license`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ installationId, licenseToken: data.licenseToken })
-    });
-    const json = await res.json();
+    const data = await getLocal(["licenseToken", "licenseVerifiedAt"]);
 
-    if (json.valid) {
-      await setLocal({ licenseVerifiedAt: Date.now() });
-      _licenseCache = { isPro: true };
-    } else {
-      await removeLocal(["licenseToken", "licenseVerifiedAt"]);
+    if (!data.licenseToken) {
       _licenseCache = { isPro: false };
+      _licenseCacheAt = Date.now();
+      return _licenseCache;
+    }
+
+    // Trust local cache if verified within last 24 hours — no network needed
+    if (data.licenseVerifiedAt && Date.now() - data.licenseVerifiedAt < 24 * 60 * 60 * 1000) {
+      _licenseCache = { isPro: true };
+      _licenseCacheAt = Date.now();
+      return _licenseCache;
+    }
+
+    // Re-verify — 5 second timeout so alarm handler never stalls
+    try {
+      const installationId = await getInstallationId();
+      const res = await fetchWithTimeout(
+        `${BACKEND_URL}/api/verify-license`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ installationId, licenseToken: data.licenseToken })
+        },
+        5000
+      );
+      const json = await res.json();
+
+      if (json.valid) {
+        await setLocal({ licenseVerifiedAt: Date.now() });
+        _licenseCache = { isPro: true };
+      } else {
+        await removeLocal(["licenseToken", "licenseVerifiedAt"]);
+        _licenseCache = { isPro: false };
+      }
+    } catch (e) {
+      // Network error or timeout — fail open so offline users are not locked out
+      console.warn("License verify network error, trusting cached token:", e.message);
+      _licenseCache = { isPro: true };
     }
   } catch (e) {
-    // Network error — fail open so offline users are not locked out
-    console.warn("License re-verify failed (network), trusting cached token:", e);
-    _licenseCache = { isPro: true };
+    // Storage error — fail safe, assume not pro
+    console.warn("getLicenseStatus storage error:", e.message);
+    _licenseCache = { isPro: false };
   }
 
   _licenseCacheAt = Date.now();
@@ -394,30 +430,35 @@ async function getLicenseStatus() {
 
 async function createCheckoutSession() {
   const installationId = await getInstallationId();
-  const res = await fetch(`${BACKEND_URL}/api/create-checkout`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ installationId })
-  });
+  const res = await fetchWithTimeout(
+    `${BACKEND_URL}/api/create-checkout`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ installationId })
+    },
+    10000
+  );
   const json = await res.json();
   await setLocal({ pendingSessionId: json.sessionId });
-  return json; // { checkoutUrl, sessionId }
+  return json;
 }
 
 async function verifyPayment(sessionId) {
   const installationId = await getInstallationId();
-  const res = await fetch(`${BACKEND_URL}/api/verify-payment`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ installationId, sessionId })
-  });
+  const res = await fetchWithTimeout(
+    `${BACKEND_URL}/api/verify-payment`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ installationId, sessionId })
+    },
+    10000
+  );
   const json = await res.json();
 
   if (json.paid && json.licenseToken) {
-    await setLocal({
-      licenseToken: json.licenseToken,
-      licenseVerifiedAt: Date.now()
-    });
+    await setLocal({ licenseToken: json.licenseToken, licenseVerifiedAt: Date.now() });
     await removeLocal(["pendingSessionId"]);
     _licenseCache = { isPro: true };
     _licenseCacheAt = Date.now();
@@ -443,33 +484,107 @@ async function getGoogleToken(interactive = false) {
   });
 }
 
-async function isUserInMeeting() {
+/**
+ * Returns { inMeeting: boolean, meetingEndTime: number|null }
+ * meetingEndTime is a JS timestamp (ms) when the current meeting ends.
+ * Always fails open — if anything goes wrong, inMeeting = false.
+ */
+async function checkCalendar() {
   try {
     const token = await getGoogleToken(false); // silent — never prompt mid-session
     const now = new Date();
-    const tenMinLater = new Date(now.getTime() + 10 * 60 * 1000);
+    // Check a 90-minute window — catches ongoing meetings and ones starting imminently
+    const windowEnd = new Date(now.getTime() + 90 * 60 * 1000);
 
-    const res = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
+    const res = await fetchWithTimeout(
+      "https://www.googleapis.com/calendar/v3/freeBusy",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          timeMin: now.toISOString(),
+          timeMax: windowEnd.toISOString(),
+          items: [{ id: "primary" }]
+        })
       },
-      body: JSON.stringify({
-        timeMin: now.toISOString(),
-        timeMax: tenMinLater.toISOString(),
-        items: [{ id: "primary" }]
-      })
-    });
+      5000
+    );
 
     const data = await res.json();
     const busySlots = data?.calendars?.primary?.busy ?? [];
-    return busySlots.length > 0;
+
+    if (busySlots.length === 0) {
+      return { inMeeting: false, meetingEndTime: null };
+    }
+
+    // Find the slot that covers right now or starts within 2 minutes
+    const twoMinsFromNow = now.getTime() + 2 * 60 * 1000;
+    const currentSlot = busySlots.find((slot) => {
+      const slotStart = new Date(slot.start).getTime();
+      const slotEnd = new Date(slot.end).getTime();
+      // Slot covers now, or starts very soon
+      return slotStart <= twoMinsFromNow && slotEnd > now.getTime();
+    });
+
+    if (!currentSlot) {
+      return { inMeeting: false, meetingEndTime: null };
+    }
+
+    const meetingEndTime = new Date(currentSlot.end).getTime();
+    return { inMeeting: true, meetingEndTime };
+
   } catch (e) {
-    // Fail open — if the check fails, don't block the stretch
-    console.warn("Calendar check failed, allowing stretch:", e);
-    return false;
+    // Any error (no token, network, timeout) → fail open, allow stretch
+    console.warn("Calendar check failed, allowing stretch:", e.message);
+    return { inMeeting: false, meetingEndTime: null };
   }
+}
+
+/**
+ * Checks calendar and handles the meeting state.
+ * Returns true if stretch was deferred (meeting), false if stretch should fire.
+ */
+async function handleCalendarCheck() {
+  const { inMeeting, meetingEndTime } = await checkCalendar();
+
+  if (!inMeeting) return false;
+
+  // Enter meeting state
+  await setRuntimeState({
+    stretchReminderState: "in_meeting",
+    pendingDueWhileIdle: false,
+    isPausedByIdle: false,
+    pausedAt: null,
+    remainingMsAtPause: null
+  });
+
+  // Store meeting end time for popup display
+  if (meetingEndTime) {
+    await setLocal({ meetingEndTime });
+  }
+
+  // Set badge to meeting state
+  setBadgeMeeting();
+  // Keep badge interval running so it stays as MTG
+  if (!countdownInterval) startBadgeCountdown();
+
+  // Schedule check for when meeting ends
+  // Chrome alarms minimum is 1 minute
+  let minutesUntilCheck = 1;
+  if (meetingEndTime) {
+    const msUntilEnd = meetingEndTime - Date.now();
+    minutesUntilCheck = Math.max(1, Math.ceil(msUntilEnd / 60000));
+  }
+
+  chrome.alarms.clear(MEETING_CHECK_ALARM, () => {
+    chrome.alarms.create(MEETING_CHECK_ALARM, { delayInMinutes: minutesUntilCheck });
+  });
+
+  console.log(`Meeting in progress. Stretch deferred. Checking again in ${minutesUntilCheck} min.`);
+  return true; // stretch deferred
 }
 
 /* ---------------------------------- */
@@ -578,7 +693,8 @@ function createAlarm(minutes) {
 
 async function stopTimer() {
   chrome.alarms.clear(ALARM_NAME);
-  await removeLocal(["startTime", "interval"]);
+  chrome.alarms.clear(MEETING_CHECK_ALARM);
+  await removeLocal(["startTime", "interval", "meetingEndTime"]);
   await setRuntimeState({
     stretchReminderState: "inactive",
     pendingDueWhileIdle: false,
@@ -617,11 +733,15 @@ async function recoverMissedStretch() {
   const data = await getLocal(["interval", "startTime"]);
   const currentRuntime = await getRuntimeState();
 
-  if (
-    currentRuntime.stretchReminderState === "shown" ||
-    currentRuntime.stretchReminderState === "waiting_for_user_active"
-  ) {
+  if (currentRuntime.stretchReminderState === "shown") {
     stopBadgeCountdown();
+    return;
+  }
+
+  // If we were in a meeting state, restore badge
+  if (currentRuntime.stretchReminderState === "in_meeting") {
+    setBadgeMeeting();
+    startBadgeCountdown();
     return;
   }
 
@@ -662,7 +782,7 @@ function ensureWeeklyResetAlarm() {
 /* ---------------------------------- */
 
 chrome.runtime.onInstalled.addListener(async () => {
-  await removeLocal(["startTime", "interval"]);
+  await removeLocal(["startTime", "interval", "meetingEndTime"]);
   await maybeResetWeeklyStats();
   ensureWeeklyResetAlarm();
   await setRuntimeState({ ...DEFAULT_RUNTIME });
@@ -706,21 +826,33 @@ chrome.idle.onStateChanged.addListener(async () => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
     if (alarm.name === ALARM_NAME) {
-
-      // Check Google Calendar — Pro only
+      // Check Google Calendar — Pro only, only if enabled
+      // This is the ONLY gate before opening the stretch window
       const { isPro } = await getLicenseStatus();
       const { calendarEnabled } = await getLocal(["calendarEnabled"]);
 
       if (isPro && calendarEnabled) {
-        const inMeeting = await isUserInMeeting();
-        if (inMeeting) {
-          // Silently reschedule — does not count as a skip
-          console.log("Stretch skipped — user is in a meeting.");
-          await resumeMainTimerFromUserInterval();
-          return;
-        }
+        const deferred = await handleCalendarCheck();
+        if (deferred) return; // meeting detected — stretch deferred
       }
 
+      // No meeting or calendar not enabled — open stretch as normal
+      await openStretchIfActive();
+      return;
+    }
+
+    if (alarm.name === MEETING_CHECK_ALARM) {
+      // Meeting check alarm fired — re-check calendar
+      const { isPro } = await getLicenseStatus();
+      const { calendarEnabled } = await getLocal(["calendarEnabled"]);
+
+      if (isPro && calendarEnabled) {
+        const deferred = await handleCalendarCheck();
+        if (deferred) return; // still in meeting — another check scheduled
+      }
+
+      // Meeting ended (or calendar check failed) — open stretch now
+      await removeLocal(["meetingEndTime"]);
       await openStretchIfActive();
       return;
     }
@@ -730,7 +862,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       return;
     }
   } catch (error) {
+    // Safety net — if anything throws, still try to open stretch
     console.error("Alarm handler error:", error);
+    try {
+      await openStretchIfActive();
+    } catch (e) {
+      console.error("Fallback openStretch also failed:", e);
+    }
   }
 });
 
@@ -741,6 +879,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   (async () => {
     try {
+
+      // ---- Original message types ----
 
       if (request.type === "startTimer") {
         await createAlarm(request.minutes);
@@ -785,6 +925,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.type === "getSettings") {
         const settings = await getSettings();
         const currentRuntime = await getRuntimeState();
+        const meetingData = await getLocal(["meetingEndTime"]);
         sendResponse({
           ok: true,
           stretchInterval: settings.interval,
@@ -793,7 +934,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           smartModeEnabled: settings.smartModeEnabled,
           soundEnabled: settings.soundEnabled,
           currentStretchSessionType: settings.currentStretchSessionType,
-          stretchReminderState: currentRuntime.stretchReminderState
+          stretchReminderState: currentRuntime.stretchReminderState,
+          meetingEndTime: meetingData.meetingEndTime || null
         });
         return;
       }
@@ -846,7 +988,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.type === "setCalendarEnabled") {
         await setLocal({ calendarEnabled: !!request.enabled });
         if (request.enabled) {
-          // Trigger Google OAuth consent screen now so it doesn't interrupt a stretch
           getGoogleToken(true).catch((e) => console.warn("Google auth:", e));
         }
         sendResponse({ ok: true });

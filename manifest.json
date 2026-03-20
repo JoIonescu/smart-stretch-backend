@@ -11,10 +11,10 @@
   ],
   "host_permissions": [
     "https://www.googleapis.com/*",
-    "https://smart-stretch-backend.vercel.app/*"
+    "https://YOUR_VERCEL_APP.vercel.app/*"
   ],
   "oauth2": {
-    "client_id": "750220805739-kuihv9grhjb9n66iqg8h52jr4c6anlrg.apps.googleusercontent.com",
+    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
     "scopes": ["https://www.googleapis.com/auth/calendar.readonly"]
   },
   "background": {

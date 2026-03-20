@@ -11,10 +11,10 @@
   ],
   "host_permissions": [
     "https://www.googleapis.com/*",
-    "https://YOUR_VERCEL_APP.vercel.app/*"
+    "https://smart-stretch-backend.vercel.app/*"
   ],
   "oauth2": {
-    "client_id": "750220805739-kuihv9grhjb9n66iqg8h52jr4c6anlrg.apps.googleusercontent.com",
+    "client_id": "YOUR_REAL_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
     "scopes": ["https://www.googleapis.com/auth/calendar.readonly"]
   },
   "background": {
@@ -29,11 +29,14 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "stretch-chime.mp3",
+        "stretch-chime.wav",
         "assets/stretch-chime.mp3",
         "assets/stretch-chime.wav",
         "assets/notification.mp3",
         "assets/notification.wav",
         "chime.mp3",
+        "libs/confetti.browser.min.js",
         "libs/dotlottie-wc.lottie",
         "dotlottie-wc.js"
       ],

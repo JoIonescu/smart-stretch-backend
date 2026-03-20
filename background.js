@@ -22,6 +22,24 @@ let _licenseCache = null;
 let _licenseCacheAt = 0;
 
 /* ---------------------------------- */
+/* SYNC STORAGE — license keys only   */
+/* Stats, settings and timer state    */
+/* stay in local storage deliberately */
+/* ---------------------------------- */
+
+function getSync(keys) {
+  return new Promise((resolve) => chrome.storage.sync.get(keys, resolve));
+}
+
+function setSync(data) {
+  return new Promise((resolve) => chrome.storage.sync.set(data, resolve));
+}
+
+function removeSync(keys) {
+  return new Promise((resolve) => chrome.storage.sync.remove(keys, resolve));
+}
+
+/* ---------------------------------- */
 /* STORAGE HELPERS                    */
 /* ---------------------------------- */
 
@@ -355,10 +373,10 @@ async function resumeMainTimerFromUserInterval() {
 /* ---------------------------------- */
 
 async function getInstallationId() {
-  const data = await getLocal(["installationId"]);
+  const data = await getSync(["installationId"]);
   if (data.installationId) return data.installationId;
   const id = crypto.randomUUID();
-  await setLocal({ installationId: id });
+  await setSync({ installationId: id });
   return id;
 }
 
@@ -377,7 +395,7 @@ async function getLicenseStatus() {
   }
 
   try {
-    const data = await getLocal(["licenseToken", "licenseVerifiedAt"]);
+    const data = await getSync(["licenseToken", "licenseVerifiedAt"]);
 
     if (!data.licenseToken) {
       _licenseCache = { isPro: false };
@@ -407,10 +425,10 @@ async function getLicenseStatus() {
       const json = await res.json();
 
       if (json.valid) {
-        await setLocal({ licenseVerifiedAt: Date.now() });
+        await setSync({ licenseVerifiedAt: Date.now() });
         _licenseCache = { isPro: true };
       } else {
-        await removeLocal(["licenseToken", "licenseVerifiedAt"]);
+        await removeSync(["licenseToken", "licenseVerifiedAt"]);
         _licenseCache = { isPro: false };
       }
     } catch (e) {
@@ -458,7 +476,7 @@ async function verifyPayment(sessionId) {
   const json = await res.json();
 
   if (json.paid && json.licenseToken) {
-    await setLocal({ licenseToken: json.licenseToken, licenseVerifiedAt: Date.now() });
+    await setSync({ licenseToken: json.licenseToken, licenseVerifiedAt: Date.now() });
     await removeLocal(["pendingSessionId"]);
     _licenseCache = { isPro: true };
     _licenseCacheAt = Date.now();

@@ -1,6 +1,8 @@
 const ALARM_NAME = "stretchAlarm";
 const WEEKLY_RESET_ALARM = "weeklyStatsReset";
 const MEETING_CHECK_ALARM = "meetingCheckAlarm";
+const POST_MEETING_ALARM = "postMeetingAlarm";
+const POST_MEETING_BUFFER_MINUTES = 5;
 
 // Replace with your deployed Vercel URL
 const BACKEND_URL = "https://smart-stretch-backend.vercel.app";
@@ -8,7 +10,7 @@ const BACKEND_URL = "https://smart-stretch-backend.vercel.app";
 let countdownInterval = null;
 
 const DEFAULT_RUNTIME = {
-  stretchReminderState: "inactive", // inactive | scheduled | in_meeting | shown
+  stretchReminderState: "inactive", // inactive | scheduled | in_meeting | post_meeting | shown
   pendingDueWhileIdle: false,
   isPausedByIdle: false,
   pausedAt: null,
@@ -286,6 +288,22 @@ function startBadgeCountdown() {
     // Show meeting badge — frozen, no countdown
     if (currentRuntime.stretchReminderState === "in_meeting") {
       setBadgeMeeting();
+      return;
+    }
+
+    // Post-meeting buffer — show countdown in yellow
+    if (currentRuntime.stretchReminderState === "post_meeting") {
+      const bufferData = await getLocal(["postMeetingStartTime"]);
+      if (bufferData.postMeetingStartTime) {
+        const elapsed = (Date.now() - bufferData.postMeetingStartTime) / 1000;
+        const remaining = Math.max(0, POST_MEETING_BUFFER_MINUTES * 60 - elapsed);
+        const minutesLeft = Math.ceil(remaining / 60);
+        chrome.action.setBadgeBackgroundColor({ color: "#FDD835" });
+        chrome.action.setBadgeText({ text: minutesLeft > 0 ? String(minutesLeft) : "0" });
+      } else {
+        chrome.action.setBadgeBackgroundColor({ color: "#FDD835" });
+        chrome.action.setBadgeText({ text: "5" });
+      }
       return;
     }
 
@@ -712,7 +730,8 @@ function createAlarm(minutes) {
 async function stopTimer() {
   chrome.alarms.clear(ALARM_NAME);
   chrome.alarms.clear(MEETING_CHECK_ALARM);
-  await removeLocal(["startTime", "interval", "meetingEndTime"]);
+  chrome.alarms.clear(POST_MEETING_ALARM);
+  await removeLocal(["startTime", "interval", "meetingEndTime", "postMeetingStartTime"]);
   await setRuntimeState({
     stretchReminderState: "inactive",
     pendingDueWhileIdle: false,
@@ -759,6 +778,12 @@ async function recoverMissedStretch() {
   // If we were in a meeting state, restore badge
   if (currentRuntime.stretchReminderState === "in_meeting") {
     setBadgeMeeting();
+    startBadgeCountdown();
+    return;
+  }
+
+  // If we were in post-meeting buffer, restore badge countdown
+  if (currentRuntime.stretchReminderState === "post_meeting") {
     startBadgeCountdown();
     return;
   }
@@ -869,8 +894,30 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         if (deferred) return; // still in meeting — another check scheduled
       }
 
-      // Meeting ended (or calendar check failed) — open stretch now
+      // Meeting ended — start 5-minute post-meeting buffer
+      await setLocal({ postMeetingStartTime: Date.now() });
       await removeLocal(["meetingEndTime"]);
+
+      await setRuntimeState({
+        stretchReminderState: "post_meeting",
+        pendingDueWhileIdle: false,
+        isPausedByIdle: false,
+        pausedAt: null,
+        remainingMsAtPause: null
+      });
+
+      startBadgeCountdown();
+
+      chrome.alarms.create(POST_MEETING_ALARM, {
+        delayInMinutes: POST_MEETING_BUFFER_MINUTES
+      });
+
+      return;
+    }
+
+    if (alarm.name === POST_MEETING_ALARM) {
+      // Buffer expired — open stretch now
+      await removeLocal(["postMeetingStartTime"]);
       await openStretchIfActive();
       return;
     }
@@ -943,7 +990,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.type === "getSettings") {
         const settings = await getSettings();
         const currentRuntime = await getRuntimeState();
-        const meetingData = await getLocal(["meetingEndTime"]);
+        const meetingData = await getLocal(["meetingEndTime", "postMeetingStartTime"]);
         sendResponse({
           ok: true,
           stretchInterval: settings.interval,
@@ -953,7 +1000,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           soundEnabled: settings.soundEnabled,
           currentStretchSessionType: settings.currentStretchSessionType,
           stretchReminderState: currentRuntime.stretchReminderState,
-          meetingEndTime: meetingData.meetingEndTime || null
+          meetingEndTime: meetingData.meetingEndTime || null,
+          postMeetingStartTime: meetingData.postMeetingStartTime || null
         });
         return;
       }
@@ -1002,6 +1050,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       // ---- Pro: Calendar ----
+
+      if (request.type === "calendarAuthResult") {
+        // Forwarded from oauth.js — if auth failed, disable calendar setting
+        if (!request.success) {
+          await setLocal({ calendarEnabled: false });
+        }
+        sendResponse({ ok: true });
+        return;
+      }
 
       if (request.type === "setCalendarEnabled") {
         await setLocal({ calendarEnabled: !!request.enabled });

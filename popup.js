@@ -1,5 +1,6 @@
 let timerInterval = null;
 let popupRefreshInterval = null;
+const POST_MEETING_BUFFER_MINUTES = 5;
 
 function sendMessage(message) {
   return new Promise((resolve) => {
@@ -122,8 +123,29 @@ async function startPopupTimerFromState(settings) {
     } else {
       timerDisplay.textContent = "Stretch paused";
     }
-    // Apply blue colour to match badge
     timerDisplay.style.color = "var(--blue)";
+    return;
+  }
+
+  // Post-meeting buffer — show countdown to stretch
+  if (settings.stretchReminderState === "post_meeting") {
+    if (timerLabel) timerLabel.textContent = "Meeting ended — stretch starting in";
+    timerDisplay.style.color = "var(--yellow)";
+
+    const bufferMs = POST_MEETING_BUFFER_MINUTES * 60 * 1000;
+    const elapsed  = settings.postMeetingStartTime ? Date.now() - settings.postMeetingStartTime : bufferMs;
+    const remaining = Math.max(0, bufferMs - elapsed);
+
+    const renderBuffer = () => {
+      const totalMs    = POST_MEETING_BUFFER_MINUTES * 60 * 1000;
+      const elapsedNow = settings.postMeetingStartTime ? Date.now() - settings.postMeetingStartTime : totalMs;
+      const rem        = Math.max(0, totalMs - elapsedNow);
+      if (rem <= 0) { timerDisplay.textContent = "0:00"; return; }
+      timerDisplay.textContent = formatRemaining(rem);
+    };
+
+    renderBuffer();
+    timerInterval = setInterval(renderBuffer, 1000);
     return;
   }
 
@@ -314,24 +336,38 @@ async function init() {
   const calendarStatus = document.getElementById("calendarStatus");
 
   calendarToggle?.addEventListener("change", async () => {
-    await sendMessage({ type: "setCalendarEnabled", enabled: calendarToggle.checked });
-
     if (calendarToggle.checked) {
-      // Must call getAuthToken from popup context — MV3 service workers
-      // cannot open interactive auth prompts
-      chrome.identity.getAuthToken({ interactive: true }, (token) => {
-        if (chrome.runtime.lastError || !token) {
-          console.warn("Google auth failed:", chrome.runtime.lastError?.message);
-          // Auth failed — uncheck the toggle and disable in storage
+      // Save the intent first
+      await sendMessage({ type: "setCalendarEnabled", enabled: true });
+
+      // Open dedicated OAuth window — popup cannot handle interactive
+      // auth because it closes on focus loss, killing the callback
+      chrome.windows.create({
+        url: chrome.runtime.getURL("oauth.html"),
+        type: "popup",
+        width: 380,
+        height: 260,
+        focused: true
+      });
+
+      // Listen for result from oauth.js
+      const handleAuthResult = (msg) => {
+        if (msg.type !== "calendarAuthResult") return;
+        chrome.runtime.onMessage.removeListener(handleAuthResult);
+
+        if (msg.success) {
+          if (calendarStatus) calendarStatus.style.display = "block";
+        } else {
+          // Auth failed — revert toggle and setting
           calendarToggle.checked = false;
           sendMessage({ type: "setCalendarEnabled", enabled: false });
           if (calendarStatus) calendarStatus.style.display = "none";
-          return;
         }
-        // Auth succeeded — show connected status
-        if (calendarStatus) calendarStatus.style.display = "block";
-      });
+      };
+      chrome.runtime.onMessage.addListener(handleAuthResult);
+
     } else {
+      await sendMessage({ type: "setCalendarEnabled", enabled: false });
       if (calendarStatus) calendarStatus.style.display = "none";
     }
   });

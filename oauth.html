@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Connecting Google Calendar…</title>
+  <style>
+    :root {
+      --bg-1: #1b1f2a;
+      --yellow: #ffd400;
+      --muted: #c7cedd;
+      --green: #34c759;
+      --red: #ff8a80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg-1);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 18px;
+      padding: 32px 28px;
+      max-width: 320px;
+      width: 90%;
+      text-align: center;
+    }
+    .icon { font-size: 40px; margin-bottom: 14px; }
+    .title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .sub { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .status-ok  { color: var(--green); font-weight: 700; margin-top: 12px; display: none; }
+    .status-err { color: var(--red);   font-weight: 700; margin-top: 12px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon" id="icon">📅</div>
+    <div class="title" id="title">Connecting Google Calendar</div>
+    <div class="sub" id="sub">Please approve access in the Google sign-in window…</div>
+    <div class="status-ok"  id="statusOk">✅ Connected — closing…</div>
+    <div class="status-err" id="statusErr">❌ Could not connect. Please try again.</div>
+  </div>
+  <script src="oauth.js"></script>
+</body>
+</html>

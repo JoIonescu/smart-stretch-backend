@@ -298,10 +298,10 @@ function startBadgeCountdown() {
         const elapsed = (Date.now() - bufferData.postMeetingStartTime) / 1000;
         const remaining = Math.max(0, POST_MEETING_BUFFER_MINUTES * 60 - elapsed);
         const minutesLeft = Math.ceil(remaining / 60);
-        chrome.action.setBadgeBackgroundColor({ color: "#FDD835" });
+        chrome.action.setBadgeBackgroundColor({ color: "#E53935" });
         chrome.action.setBadgeText({ text: minutesLeft > 0 ? String(minutesLeft) : "0" });
       } else {
-        chrome.action.setBadgeBackgroundColor({ color: "#FDD835" });
+        chrome.action.setBadgeBackgroundColor({ color: "#E53935" });
         chrome.action.setBadgeText({ text: "5" });
       }
       return;
